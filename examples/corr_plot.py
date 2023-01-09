@@ -14,29 +14,35 @@ sns.set_theme(style="whitegrid")
 
 
 
-def corr_plot(df : pd.DataFrame, category_col : str, corr_columns=None):
-    fig, ax = plt.subplots()
+def corr_plot(df : pd.DataFrame, category_col : str = None, corr_columns : list = None, **kwargs):
+    
     # determine the distinct values of category_col:
-    categories = df[category_col].unique().tolist()
-    if len(categories)<1 or len(categories)==1 or len(categories)>2:
-        if len(categories)<1:
-            print(f"Category column {category_col} has no values!")
+    if category_col is None:
+        categories = []
+    else:
+        categories = df[category_col].unique().tolist()
+    if len(categories)<1 or len(categories)==1 or len(categories)>3:
+        fig, ax = plt.subplots(figsize=(9.5,6))
+
+        if len(categories)<1 or category_col is None:
+            print(f"Category column ({category_col}) has no values!")
         elif len(categories)==1:
-            print(f"Category column {category_col} has exactly one value: {categories[0]}!")
-        elif len(categories)>2:
-            print(f"Too many categories {categories} to plot, expected 2!")
+            print(f"Category column ({category_col}) has exactly one value: {categories[0]}!")
+        elif len(categories)>3:
+            print(f"Too many categories ({categories}) to plot, expected 2 or 3!")
         print("just plot the correlation matrix of the whole dataframe")
 
         mat = df.corr()
         if corr_columns is not None:
             mat = mat[corr_columns]
-        ax = sns.heatmap(mat, annot=True, fmt=".2f", cmap="YlGnBu", vmin=-1.0, vmax=1.0)
+        ax = sns.heatmap(mat, **kwargs)
         ax.set_yticklabels(ax.get_ymajorticklabels(), fontsize=18)
         ax.set_xticklabels(ax.get_xmajorticklabels(), fontsize=18)
         ax.tick_params(axis='x', rotation=90)
         return fig, ax
         
     elif len(categories)==2:
+        fig, ax = plt.subplots(figsize=(9.5,6))
         # split the dataframe into dataframes for each category
         # and compute the correlation matrix for each
         df_cat, mat = [], []
@@ -51,7 +57,7 @@ def corr_plot(df : pd.DataFrame, category_col : str, corr_columns=None):
         mat_combined = np.triu(mat[0].to_numpy(), k=1) + np.tril(mat[1].to_numpy())
         df_combined = pd.DataFrame(mat_combined, columns=mat[0].columns, index=mat[0].columns)
 
-        ax = sns.heatmap(df_combined, annot=True, fmt=".2f", cmap="YlGnBu", vmin=-1.0, vmax=1.0)
+        ax = sns.heatmap(df_combined, **kwargs)
         ax.set_yticklabels(ax.get_ymajorticklabels(), fontsize=18)
         ax.set_xticklabels(ax.get_xmajorticklabels(), fontsize=18)
         ax.tick_params(axis='x', rotation=90)
@@ -68,15 +74,55 @@ def corr_plot(df : pd.DataFrame, category_col : str, corr_columns=None):
 
         return fig, ax
 
+    elif len(categories)==3:
+        fig, axes = plt.subplots(1, 2, sharey=True, figsize=(14,6))
+        # split the dataframe into dataframes for each category
+        # and compute the correlation matrix for each
+        df_cat, mat = [], []
+        if corr_columns is None:
+            corr_columns = df.columns
+        
+        for category in categories:
+            df_cat.append(df.loc[df[category_col]==category, corr_columns])
+            mat.append(df_cat[len(df_cat)-1].corr())
 
-# Load the brain networks dataset, select subset, and collapse the multi-index
+        # combine the correlation matrices pairwise (0,1), (0,2):
+        mat_combined, df_combined = [], []
+        mat_combined.append(np.triu(mat[0].to_numpy(), k=1) + np.tril(mat[1].to_numpy()))
+        mat_combined.append(np.triu(mat[0].to_numpy(), k=1) + np.tril(mat[2].to_numpy()))
+
+        index_tuples = (0,1), (0,2)
+        for i in range(len(categories)-1):
+            df_combined.append(pd.DataFrame(mat_combined[i], columns=mat[0].columns, index=mat[0].columns))
+            axes[i] = sns.heatmap(df_combined[i], ax=axes[i], **kwargs)
+
+        for i,ax in enumerate(axes):
+            ax.set_yticklabels(ax.get_ymajorticklabels(), fontsize=18)
+            ax.set_xticklabels(ax.get_xmajorticklabels(), fontsize=18)
+            ax.tick_params(axis='x', rotation=90)
+
+            # get padding around figure
+            h, w = ax.bbox.height, ax.bbox.width
+            # draw line
+            #plt.axline([-0.1, -0.1], [1.1, 1.1], linewidth=2, color='r', clip_on=False)
+            ax.text(0, 1-0.01, "----------", horizontalalignment='right', verticalalignment='bottom', transform=ax.transAxes, fontsize=18, rotation = -np.arctan(h/w)*180/pi)
+            ax.text(1, 0+0.01, "----------", horizontalalignment='left', verticalalignment='top', transform=ax.transAxes, fontsize=18, rotation = -np.arctan(h/w)*180/pi)
+
+            # text top right
+            ax.text(1, 1, categories[index_tuples[i][0]], horizontalalignment='left', verticalalignment='bottom', transform=ax.transAxes, fontsize=18, fontstyle='italic', rotation = np.arctan(h/w)*180/pi)
+            # text bottom left
+            ax.text(0, 0, categories[index_tuples[i][1]], horizontalalignment='right', verticalalignment='top', transform=ax.transAxes, fontsize=18, fontstyle='italic', rotation = np.arctan(h/w)*180/pi)
+            
+
+        return fig, axes
+
+
 df = sns.load_dataset("penguins")
 df = df.dropna(axis=0)
 
-#columns_ = ["bill_length_mm", "bill_depth_mm", "flipper_length_mm", "body_mass_g"]
-category_col = "sex"
-#fig, ax = corr_plot(df, category_col, columns_)
-fig, ax = corr_plot(df, category_col)
+category_col = "species"  # three species: two paired correlation plots
+#category_col = "sex"  # two categories: Female, Male: one paired correlation plot
+fig, ax = corr_plot(df, category_col=category_col, annot=True, fmt=".2f", cmap="YlGnBu")
 plt.show()
 
 #sns.pairplot(df, hue="species", vars=columns_, diag_kind="kde", kind="reg", plot_kws={'line_kws':{'color':'red'}, 'scatter_kws': {'alpha': 0.3}})
